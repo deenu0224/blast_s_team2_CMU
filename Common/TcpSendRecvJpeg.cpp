@@ -5,6 +5,9 @@
 // 1.0 April 2017 - initial version
 // Send and receives OpenCV Mat Images in a Tcp Stream commpressed as Jpeg images 
 //------------------------------------------------------------------------------------------------
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <opencv2/highgui/highgui.hpp>
 #include "TcpSendRecvJpeg.h"
 #include "Message.h"

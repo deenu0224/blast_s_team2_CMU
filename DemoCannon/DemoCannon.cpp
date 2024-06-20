@@ -5,6 +5,8 @@
 // Versions:
 // 1.0 April 2024 - initial version
 //------------------------------------------------------------------------------------------------
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <math.h>
@@ -23,9 +25,6 @@
 #include "lgpio.h"
 #include "CvImageMatch.h"
 #include "ssd1306.h"
-
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 
 //#define USE_TFLITE      1 
@@ -642,12 +641,6 @@ static void DrawCrosshair(Mat &img, Point correct, const Scalar &color)
   line(img, Point(pt.x+gap, pt.y), Point(pt.x+size, pt.y), color, 1,LINE_8, shift);
   line(img, pt, pt, color, 1,LINE_8, shift);
 }
-
-void initialize_ssl() {
-    SSL_load_error_strings();
-    OpenSSL_add_ssl_algorithms();
-}
-
 //------------------------------------------------------------------------------------------------
 // END static void DrawCrosshair
 //------------------------------------------------------------------------------------------------
@@ -711,11 +704,6 @@ int main(int argc, const char** argv)
    }
 
 #endif
-
- // SSL √ ±‚»≠
- 	initialize_ssl();
- 	printf("Hello SSL Open\n");
-
 
  if  ((TcpListenPort=OpenTcpListenPort(PORT))==NULL)  // Open UDP Network port
      {

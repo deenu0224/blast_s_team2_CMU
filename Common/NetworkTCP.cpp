@@ -6,10 +6,63 @@
 // Provides the ability to send and recvive TCP byte streams for both Window and linux platforms
 //------------------------------------------------------------------------------------------------
 #include <iostream>
+#include <cstring>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <new>
 #include <stdio.h>
 #include <string.h>
 #include "NetworkTCP.h"
+
+void initialize_ssl() {
+    SSL_load_error_strings();
+    OpenSSL_add_ssl_algorithms();
+}
+
+void cleanup_openssl() {
+    EVP_cleanup();
+}
+
+SSL_CTX* create_context() {
+    const SSL_METHOD* method;
+    SSL_CTX* ctx;
+
+    method = TLS_server_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+        perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+
+void configure_context(SSL_CTX* ctx) {
+    SSL_CTX_set_ecdh_auto(ctx, 1);
+
+    if (SSL_CTX_use_certificate_file(ctx, "key/server.crt", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, "key/server.key", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_load_verify_locations(ctx, "key/ca.crt", NULL) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+    SSL_CTX_set_verify_depth(ctx, 1);
+}
+
 //-----------------------------------------------------------------
 // OpenTCPListenPort - Creates a Listen TCP port to accept
 // connection requests
@@ -106,7 +159,15 @@ void CloseTcpListenPort(TTcpListenPort **TcpListenPort)
 TTcpConnectedPort *AcceptTcpConnection(TTcpListenPort *TcpListenPort, 
                        struct sockaddr_in *cli_addr,socklen_t *clilen)
 {
+	struct sockaddr_in addr;
+    socklen_t len = sizeof(addr);
   TTcpConnectedPort *TcpConnectedPort;
+  SSL_CTX* ctx;
+  
+ // SSL ÃÊ±âÈ­
+ 	initialize_ssl();
+    ctx = create_context();
+    configure_context(ctx);
 
   TcpConnectedPort= new (std::nothrow) TTcpConnectedPort;  
   
@@ -124,6 +185,17 @@ TTcpConnectedPort *AcceptTcpConnection(TTcpListenPort *TcpListenPort,
 	delete TcpConnectedPort;
 	return NULL;
   }
+  
+  	TcpConnectedPort->ssl = SSL_new(ctx);
+	SSL_set_fd(TcpConnectedPort->ssl, TcpConnectedPort->ConnectedFd);
+
+	if (SSL_accept(TcpConnectedPort->ssl) <= 0) {
+	    ERR_print_errors_fp(stderr);
+		delete TcpConnectedPort;
+		return NULL;
+	} else {
+	    ;
+	}
   
  int bufsize = 200 * 1024;
  if (setsockopt(TcpConnectedPort->ConnectedFd, SOL_SOCKET, 
