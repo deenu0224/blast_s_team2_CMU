@@ -1083,6 +1083,12 @@ static void ProcessFiringOrder(char * FiringOrder)
   for (int i=0;i<len;i++)
     {
       AutoEngage.FiringOrder[i]=FiringOrder[i]-'0';
+	  if(AutoEngage.FiringOrder[i] > 9 || AutoEngage.FiringOrder[i] < 0)
+	  {
+	  	AutoEngage.HaveFiringOrder=false;
+	     printf("Invalid Target number.\n");
+	     return;
+	  }
     }
   if (len>0)  AutoEngage.HaveFiringOrder=true;
   else
