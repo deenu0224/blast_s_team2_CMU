@@ -354,9 +354,9 @@ ssize_t WriteDataTcp(TTcpConnectedPort *TcpConnectedPort,unsigned char *data, si
   ssize_t bytes_written;
   while (total_bytes_written != length)
     {
-     bytes_written = send(TcpConnectedPort->ConnectedFd,
+     bytes_written = SSL_write(TcpConnectedPort->ssl,
 	                               (char *)(data+total_bytes_written),
-                                  length - total_bytes_written,0);
+                                  length - total_bytes_written);
      if (bytes_written == -1)
        {
        return(-1);
