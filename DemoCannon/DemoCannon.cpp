@@ -1222,17 +1222,17 @@ static void *NetworkInputThread(void *data)
  unsigned char Buffer[512];
  TMesssageHeader *MsgHdr;
  int fd=TcpConnectedPort->ConnectedFd,retval;
+SSL *ssl = TcpConnectedPort->ssl;
  
  SendSystemState(SystemState);
 
  while (1)
  {
-   if ((retval=recv(fd, &Buffer, sizeof(TMesssageHeader),0)) != sizeof(TMesssageHeader)) 
-     {
-      if (retval==0) printf("Client Disconnnected\n");
-      else printf("Connecton Lost %s\n", strerror(errno));
-      break;
-     }
+   if ((retval = SSL_read(ssl, &Buffer, sizeof(TMesssageHeader))) != sizeof(TMesssageHeader)) {
+    if (retval == 0) printf("Client Disconnected\n");
+    else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
+    break;
+	}
    MsgHdr=(TMesssageHeader *)Buffer;
    MsgHdr->Len = ntohl(MsgHdr->Len);
    MsgHdr->Type = ntohl(MsgHdr->Type);
@@ -1242,12 +1242,12 @@ static void *NetworkInputThread(void *data)
       printf("oversized message error %d\n",MsgHdr->Len);
       break;
      }
-   if ((retval=recv(fd, &Buffer[sizeof(TMesssageHeader)],  MsgHdr->Len,0)) !=  MsgHdr->Len) 
-     {
-      if (retval==0) printf("Client Disconnnected\n");
-      else printf("Connecton Lost %s\n", strerror(errno));
-      break;
-     }
+   if ((retval = SSL_read(ssl, &Buffer[sizeof(TMesssageHeader)], MsgHdr->Len)) != MsgHdr->Len) {
+	   if (retval == 0) printf("Client Disconnected\n");
+	   else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
+	   break;
+   }
+
 
    switch(MsgHdr->Type)
     {
