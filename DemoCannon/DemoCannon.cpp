@@ -1213,6 +1213,42 @@ static void ProcessCalibCommands(unsigned char cmd)
 //------------------------------------------------------------------------------------------------
 // END static void ProcessCalibCommands
 //------------------------------------------------------------------------------------------------
+#define MAX_MESSAGE_BUF_SIZE 512
+int GetExpectedTotalLength(int Type)
+{
+	int expected_total_len;
+	switch(Type)
+	{
+		case MT_COMMANDS :
+			expected_total_len = sizeof(TMesssageCommands);
+			break;
+		case MT_CALIB_COMMANDS :
+			expected_total_len = sizeof(TMesssageCalibCommands);
+			break;
+		case MT_PREARM :
+			expected_total_len = sizeof(TMesssagePreArm);
+			break;
+		case MT_STATE_CHANGE_REQ :
+			expected_total_len = sizeof(TMesssageChangeStateRequest);
+			break;
+		case MT_TARGET_SEQUENCE :
+			expected_total_len = sizeof(TMesssageTargetOrder);
+			break;
+		default:
+			break;
+	}
+	return expected_total_len;
+}
+
+int IsValidRecvMessageLength(int body_len, int Type)
+{
+	if(body_len < 0 || body_len > MAX_MESSAGE_BUF_SIZE - sizeof(TMesssageHeader))
+		return false;
+	
+	if(body_len + sizeof(TMesssageHeader) > GetExpectedTotalLength(Type))
+		return false;
+	return true;
+}
 
 //------------------------------------------------------------------------------------------------
 // static void *NetworkInputThread
@@ -1237,7 +1273,7 @@ SSL *ssl = TcpConnectedPort->ssl;
    MsgHdr->Len = ntohl(MsgHdr->Len);
    MsgHdr->Type = ntohl(MsgHdr->Type);
 
-   if (MsgHdr->Len+sizeof(TMesssageHeader)>sizeof(Buffer))
+   if (!IsValidRecvMessageLength(MsgHdr->Len, MsgHdr->Type))
      {
       printf("oversized message error %d\n",MsgHdr->Len);
       break;
@@ -1247,7 +1283,7 @@ SSL *ssl = TcpConnectedPort->ssl;
 	   else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
 	   break;
    }
-
+	printf("Recv type : %d \t Len : %d\n", MsgHdr->Type, MsgHdr->Len + sizeof(TMesssageHeader));
 
    switch(MsgHdr->Type)
     {
