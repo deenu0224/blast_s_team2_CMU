@@ -33,10 +33,10 @@
 #define PORT            5000
 #define PAN_SERVO       1
 #define TILT_SERVO      2
-#define MIN_TILT         (-35.0f)
-#define MAX_TILT         ( 35.0f)
-#define MIN_PAN          (-85.0f)
-#define MAX_PAN          ( 85.0f)
+#define MIN_TILT         (-15.0f)
+#define MAX_TILT         ( 15.0f)
+#define MIN_PAN          (-15.0f)
+#define MAX_PAN          ( 15.0f)
 
 
 #define WIDTH           1920
