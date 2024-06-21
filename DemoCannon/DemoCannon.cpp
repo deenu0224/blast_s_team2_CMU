@@ -313,6 +313,7 @@ static void ProcessTargetEngagements(TAutoEngage *Auto,int width,int height)
                 {
                   int retval;
                   TEngagementState state=LOOKING_FOR_TARGET;
+                  bool targetFound = false; // Added variable to track if target is found
                   for (int i = 0; i < NumMatches; i++)
                      {
                       if (DetectedMatches[i].match==Auto->Target)
@@ -336,6 +337,7 @@ static void ProcessTargetEngagements(TAutoEngage *Auto,int width,int height)
                          Auto->LastTilt=Tilt;
                          if (Auto->StableCount>2) state=TRACKING_STABLE;
                          else state=TRACKING;
+                         targetFound = true; // Set targetFound to true
                          break;
                         }
                      }
@@ -371,6 +373,14 @@ static void ProcessTargetEngagements(TAutoEngage *Auto,int width,int height)
                              exit(0);
                             }
                         }
+                     }
+                     else if (state==LOOKING_FOR_TARGET && !targetFound) // If target is not found
+                     {
+                          Auto->State = NOT_ACTIVE; // Move to NOT_ACTIVE state
+                          SystemState = PREARMED; // Set system state to PREARMED
+                          SendSystemState(SystemState);
+                          PrintfSend("Unable to locate target %d. Please troubleshoot the issue.", AutoEngage.Target);
+                          break; // Exit the switch statement
                      }
                 }    
                 break;
