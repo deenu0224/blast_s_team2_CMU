@@ -233,8 +233,12 @@ static void ServoAngle(int Num,float &Angle)
 static void fire(bool value)
 {
  pthread_mutex_lock(&GPIO_Mutex);
- if (value) SystemState=(SystemState_t)(SystemState|FIRING);
- else SystemState=(SystemState_t)(SystemState & CLEAR_FIRING_MASK);
+ if (value && !(SystemState & (UNKNOWN|SAFE|PREARMED))) {
+   SystemState=(SystemState_t)(SystemState|FIRING);
+ } else {
+   SystemState=(SystemState_t)(SystemState & CLEAR_FIRING_MASK);
+   value=false;
+ }
  lgGpioWrite(gpioid,17,value);
  pthread_mutex_unlock(&GPIO_Mutex);
 }
