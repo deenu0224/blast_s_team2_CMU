@@ -144,13 +144,18 @@ static ObjectDetector *detector;
 static void ReadOffsets(void)
 {
    FILE * fp;
-   float x,y;
-   char xs[100],ys[100];
+   float x=0.0f,y=0.0f;
+   char xs[100]={0},ys[100]={0};
    int retval=0;
    
    fp = fopen ("Correct.ini", "r");
-   retval+=fscanf(fp, "%s %f", xs,&x);
-   retval+=fscanf(fp, "%s %f", ys,&y);
+   if (fp==NULL)
+   {
+    printf("Error opening file 'Correct.ini': %s\n", strerror(errno));
+    return;
+   }
+   retval+=fscanf(fp, "%99s %f", xs,&x);
+   retval+=fscanf(fp, "%99s %f", ys,&y);
    if (retval==4)
    {
     if ((strcmp(xs,"xCorrect")==0) && (strcmp(ys,"yCorrect")==0))
@@ -174,11 +179,13 @@ static void ReadOffsets(void)
 static void WriteOffsets(void)
 {
    FILE * fp;
-   float x,y;
-   char xs[100],ys[100];
-   int retval=0;
 
    fp = fopen ("Correct.ini", "w+");
+   if (fp==NULL)
+   {
+    printf("Error opening file 'Correct.ini': %s\n", strerror(errno));
+    return;
+   }
    rewind(fp);
    fprintf(fp,"xCorrect %f\n", xCorrect);
    fprintf(fp,"yCorrect %f\n", yCorrect);
