@@ -43,6 +43,7 @@ typedef struct
 {
  SOCKET_FD_TYPE ConnectedFd;
  SSL* ssl;
+ SSL_CTX* ctx;
 } TTcpConnectedPort;
 
 //------------------------------------------------------------------------------------------------
