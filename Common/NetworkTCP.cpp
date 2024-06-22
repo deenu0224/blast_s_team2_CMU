@@ -162,14 +162,13 @@ TTcpConnectedPort *AcceptTcpConnection(TTcpListenPort *TcpListenPort,
 	struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
   TTcpConnectedPort *TcpConnectedPort;
-  SSL_CTX* ctx;
   
- // SSL 초기화
- 	initialize_ssl();
-    ctx = create_context();
-    configure_context(ctx);
 
   TcpConnectedPort= new (std::nothrow) TTcpConnectedPort;  
+	// SSL 초기화
+	 initialize_ssl();
+	 TcpConnectedPort->ctx = create_context();
+	 configure_context(TcpConnectedPort->ctx);
   
   if (TcpConnectedPort==NULL)
      {
@@ -314,9 +313,14 @@ void CloseTcpConnectedPort(TTcpConnectedPort **TcpConnectedPort)
   if ((*TcpConnectedPort)==NULL) return;
   if ((*TcpConnectedPort)->ConnectedFd!=BAD_SOCKET_FD)  
      {
+	 	SSL_shutdown((*TcpConnectedPort)->ssl);
+	    SSL_free((*TcpConnectedPort)->ssl);
+		SSL_CTX_free((*TcpConnectedPort)->ctx);
       CLOSE_SOCKET((*TcpConnectedPort)->ConnectedFd);
       (*TcpConnectedPort)->ConnectedFd=BAD_SOCKET_FD;
+	  
      }
+  cleanup_openssl();
    delete (*TcpConnectedPort);
   (*TcpConnectedPort)=NULL;
 #if  defined(_WIN32) || defined(_WIN64)

@@ -292,7 +292,9 @@ static void ProcessTargetEngagements(TAutoEngage *Auto,int width,int height)
 {
  
  bool NewState=false;
-        
+ if(isConnected == false)
+ 	return;
+ 
  switch(Auto->State)
   {
    case NOT_ACTIVE:
@@ -669,8 +671,6 @@ int main(int argc, const char** argv)
                                                       0.0,0.0,0.0,0.0,
                                                       0.0,0.0,0.0,0.0};
   int                              retval,i,Fcnt = 0;
-  struct sockaddr_in               cli_addr;
-  socklen_t                        clilen;
   chrono::steady_clock::time_point Tbegin, Tend;
  
   ReadOffsets();
@@ -719,12 +719,6 @@ int main(int argc, const char** argv)
 
 #endif
 
- if  ((TcpListenPort=OpenTcpListenPort(PORT))==NULL)  // Open UDP Network port
-     {
-       printf("OpenTcpListenPortFailed\n");
-       return(-1);
-     }
-
    OpenGPIO();
    laser(false);
    fire(false);
@@ -735,17 +729,6 @@ int main(int argc, const char** argv)
    ServoAngle(TILT_SERVO, Tilt);
 
    Setup_Control_C_Signal_Handler_And_Keyboard_No_Enter(); // Set Control-c handler to properly exit clean
-
-   printf("Listening for connections\n");
-   clilen = sizeof(cli_addr);
-   if  ((TcpConnectedPort=AcceptTcpConnection(TcpListenPort,&cli_addr,&clilen))==NULL)
-     {
-       printf("AcceptTcpConnection Failed\n");
-       return(-1);
-     }
-   isConnected=true;
-   printf("Accepted connection Request\n");
-   CloseTcpListenPort(&TcpListenPort);  // Close listen port
 
   if (!OpenCamera())
      {
@@ -761,11 +744,13 @@ int main(int argc, const char** argv)
      printf("Failed to Create Network Input Thread\n");
      exit(0);
    }
+  printf("Create Network\n");
   if (pthread_create(&EngagementThreadID, NULL,EngagementThread, NULL)!=0)
    {
      printf("Failed to Create ,Engagement Thread\n");
      exit(0);
    }
+   printf("Create Engagement\n");
 
   do
    {
@@ -837,7 +822,7 @@ int main(int argc, const char** argv)
     avfps = chrono::duration_cast <chrono::milliseconds> (Tend - Tbegin).count();
     if (avfps > 0.0) FPS[((Fcnt++) & 0x0F)] = 1000.0 / avfps;
     for (avfps = 0.0, i = 0; i < 16; i++) { avfps += FPS[i]; }
-  } while (isConnected);
+  } while (1);
 
   printf("Main Thread Exiting\n");
   CleanUp();
@@ -1277,17 +1262,42 @@ static void *NetworkInputThread(void *data)
 {
  unsigned char Buffer[512];
  TMesssageHeader *MsgHdr;
- int fd=TcpConnectedPort->ConnectedFd,retval;
-SSL *ssl = TcpConnectedPort->ssl;
  
- SendSystemState(SystemState);
+ 
 
  while (1)
  {
+ 	if(isConnected == 0)
+ 	{
+		if  ((TcpListenPort=OpenTcpListenPort(PORT))==NULL)  // Open UDP Network port
+		{
+			printf("OpenTcpListenPortFailed\n");
+			exit(0);
+		}
+		socklen_t						clilen;
+		struct sockaddr_in               cli_addr;
+	   	printf("Listening for connections by OPEN SSL\n");
+	   	clilen = sizeof(cli_addr);
+	   	if  ((TcpConnectedPort=AcceptTcpConnection(TcpListenPort,&cli_addr,&clilen))==NULL)
+	     {
+	       printf("AcceptTcpConnection Failed\n");
+			exit(0);
+	     }
+	   	isConnected=true;
+	   	printf("Accepted connection Request\n");
+	   	CloseTcpListenPort(&TcpListenPort);  // Close listen port
+	   	SendSystemState(SystemState);
+	   	continue;
+ 	}
+	
+   int fd=TcpConnectedPort->ConnectedFd,retval;
+   SSL *ssl = TcpConnectedPort->ssl;
    if ((retval = SSL_read(ssl, &Buffer, sizeof(TMesssageHeader))) != sizeof(TMesssageHeader)) {
-    if (retval == 0) printf("Client Disconnected\n");
-    else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
-    break;
+	    if (retval == 0) printf("Client Disconnected\n");
+	    else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
+	    isConnected = false;
+ 		CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
+		continue;
 	}
    MsgHdr=(TMesssageHeader *)Buffer;
    MsgHdr->Len = ntohl(MsgHdr->Len);
@@ -1295,13 +1305,17 @@ SSL *ssl = TcpConnectedPort->ssl;
 
    if (!IsValidRecvMessageLength(MsgHdr->Len, MsgHdr->Type))
      {
-      printf("oversized message error %d\n",MsgHdr->Len);
-      break;
+	      printf("oversized message error %d\n",MsgHdr->Len);
+	      isConnected = false;
+		  CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
+		  continue;
      }
    if ((retval = SSL_read(ssl, &Buffer[sizeof(TMesssageHeader)], MsgHdr->Len)) != MsgHdr->Len) {
 	   if (retval == 0) printf("Client Disconnected\n");
 	   else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
-	   break;
+	   isConnected = false;
+	   CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
+	   continue;
    }
 	printf("Recv type : %d \t Len : %d\n", MsgHdr->Type, MsgHdr->Len + sizeof(TMesssageHeader));
 
