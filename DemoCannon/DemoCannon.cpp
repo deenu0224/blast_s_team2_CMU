@@ -611,12 +611,12 @@ static void OLED_UpdateStatus(void)
        LastSystemStateBase=SystemStateBase;
        ssd1306_oled_clear_line(0);  
        ssd1306_oled_set_XY(0, 0);
-       if  (SystemStateBase==UNKNOWN)  strcpy(Status,"Unknown");
-       else if  (SystemStateBase==SAFE)  strcpy(Status,"SAFE");
-       else if  (SystemStateBase==PREARMED)  strcpy(Status,"PREARMED");
-       else if  (SystemStateBase==ENGAGE_AUTO)  strcpy(Status,"ENGAGE AUTO");
-       else if  (SystemStateBase==ARMED_MANUAL)  strcpy(Status,"ARMED_MANUAL");
-       if (SystemState & ARMED) strcat(Status,"-ARMED");
+       if  (SystemStateBase==UNKNOWN)  strncpy(Status,"Unknown", sizeof(Status));
+       else if  (SystemStateBase==SAFE)  strncpy(Status,"SAFE", sizeof(Status));
+       else if  (SystemStateBase==PREARMED)  strncpy(Status,"PREARMED", sizeof(Status));
+       else if  (SystemStateBase==ENGAGE_AUTO)  strncpy(Status,"ENGAGE AUTO", sizeof(Status));
+       else if  (SystemStateBase==ARMED_MANUAL)  strncpy(Status,"ARMED_MANUAL", sizeof(Status));
+       if (SystemState & ARMED) strncat(Status,"-ARMED", sizeof(Status) - strlen(Status) - 1);
        ssd1306_oled_write_line(OLED_Font, Status);
       }
 
@@ -624,16 +624,16 @@ static void OLED_UpdateStatus(void)
     {
      ssd1306_oled_clear_line(1); 
      ssd1306_oled_set_XY(0, 1);
-     if (SystemState & LASER_ON ) strcpy(Status,"LASER-ON");
-     else strcpy(Status,"LASER-OFF");
+     if (SystemState & LASER_ON ) strncpy(Status,"LASER-ON", sizeof(Status));
+     else strncpy(Status,"LASER-OFF", sizeof(Status));
      ssd1306_oled_write_line(OLED_Font, Status);
     }
    if((SystemState & FIRING)!=(LastSystemState & FIRING)||(LastSystemState==UNKNOWN))
    {
      ssd1306_oled_clear_line(2); 
      ssd1306_oled_set_XY(0, 2);
-     if (SystemState & FIRING ) strcpy(Status,"FIRING-TRUE");
-     else strcpy(Status,"FIRING-FALSE");
+     if (SystemState & FIRING ) strncpy(Status,"FIRING-TRUE", sizeof(Status));
+     else strncpy(Status,"FIRING-FALSE", sizeof(Status));
      ssd1306_oled_write_line(OLED_Font, Status);
     }
    LastSystemState=SystemState;
@@ -966,7 +966,7 @@ static void ProcessPreArm(char * Code)
     if ((Code[sizeof(Decode)]==0) && (strlen(Code)==sizeof(Decode)))
       { 
         for (int i=0;i<sizeof(Decode);i++) Code[i]^=Decode[i];
-        if (strcmp((const char*)Code,"PREARMED")==0)
+        if (strncmp((const char*)Code,"PREARMED",sizeof(Decode))==0)
           {
             SystemState=PREARMED;
             SendSystemState(SystemState);
