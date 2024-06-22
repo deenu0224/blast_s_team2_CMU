@@ -284,6 +284,12 @@ static void laser(bool value)
 //------------------------------------------------------------------------------------------------
 // static void ProcessTargetEngagements
 //------------------------------------------------------------------------------------------------
+static void camera(bool value)
+{
+  if (value) SystemState=(SystemState_t)(SystemState|CAMERA_ON);
+  else SystemState=(SystemState_t)(SystemState & CLEAR_CAMERA_MASK);
+}
+
 static void ProcessTargetEngagements(TAutoEngage *Auto,int width,int height)
 {
  
@@ -584,7 +590,7 @@ static void OLED_UpdateStatus(void)
         pthread_mutex_unlock(&I2C_Mutex);
         return;
        }
-    SystemStateBase=(SystemState_t)(SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK);
+    SystemStateBase=(SystemState_t)(SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK);
     if (SystemStateBase!=LastSystemStateBase)
       {
        LastSystemStateBase=SystemStateBase;
@@ -817,7 +823,7 @@ int main(int argc, const char** argv)
      }
 
     
-    if ((isConnected) && (TcpSendImageAsJpeg(TcpConnectedPort,ResizedFrame)<0))  break;
+    if ((isConnected) && (SystemState & CAMERA_ON) && (TcpSendImageAsJpeg(TcpConnectedPort,ResizedFrame)<0))  break;
    
     Tend = chrono::steady_clock::now();
     avfps = chrono::duration_cast <chrono::milliseconds> (Tend - Tbegin).count();
@@ -962,14 +968,15 @@ static void ProcessPreArm(char * Code)
 static void ProcessStateChangeRequest(SystemState_t state)
 {  
  static bool CalibrateWasOn=false;
- switch(state&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)
+ switch(state&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)
  {
   case SAFE:
             {
+			  camera(false);
               laser(false);
               calibrate(false);
               fire(false);
-              SystemState=(SystemState_t)(state & CLEAR_LASER_FIRING_ARMED_CALIB_MASK);
+              SystemState=(SystemState_t)(state & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK);
               AutoEngage.State=NOT_ACTIVE;
               AutoEngage.HaveFiringOrder=false;
               AutoEngage.NumberOfTartgets=0;
@@ -977,13 +984,13 @@ static void ProcessStateChangeRequest(SystemState_t state)
             break;
   case PREARMED:
             { 
-              if (((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)==ENGAGE_AUTO) || 
-                  ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)==ARMED_MANUAL))
+              if (((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)==ENGAGE_AUTO) || 
+                  ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)==ARMED_MANUAL))
                 {
                   laser(false);
                   fire(false);
                   calibrate(false);
-                  if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)==ENGAGE_AUTO)
+                  if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)==ENGAGE_AUTO)
                      {
                       AutoEngage.State=NOT_ACTIVE;
                       AutoEngage.HaveFiringOrder=false;
@@ -996,7 +1003,7 @@ static void ProcessStateChangeRequest(SystemState_t state)
 
   case ENGAGE_AUTO:
             {
-              if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=PREARMED)
+              if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=PREARMED)
               {
                PrintfSend("Invalid State request to Auto %d\n",SystemState); 
               }
@@ -1016,12 +1023,12 @@ static void ProcessStateChangeRequest(SystemState_t state)
             break;
   case ARMED_MANUAL:
             {
-              if (((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=PREARMED) && 
-                  ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=ARMED_MANUAL)) 
+              if (((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=PREARMED) && 
+                  ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=ARMED_MANUAL)) 
               {
                PrintfSend("Invalid State request to Auto %d\n",SystemState); 
               }
-             else if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_MASK)==PREARMED)
+             else if ((SystemState&CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)==PREARMED)
               {
                 laser(false);
                 calibrate(false);
@@ -1057,6 +1064,9 @@ static void ProcessStateChangeRequest(SystemState_t state)
          WriteOffsets();
         }
     }
+ 
+  if (SystemState & CAMERA_ON) camera(true);
+ else camera(false);
 
  SendSystemState(SystemState);
 }
@@ -1112,13 +1122,13 @@ static void ProcessFiringOrder(char * FiringOrder)
 //------------------------------------------------------------------------------------------------
 static void ProcessCommands(unsigned char cmd)
 {
- if (((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=PREARMED) &&
-     ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=ARMED_MANUAL))
+ if (((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=PREARMED) &&
+     ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=ARMED_MANUAL))
     {
       printf("received Commands outside of Pre-Arm or Armed Manual State %x \n",cmd);
       return;
     } 
- if (((cmd==FIRE_START) || (cmd==FIRE_STOP)) && ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=ARMED_MANUAL))
+ if (((cmd==FIRE_START) || (cmd==FIRE_STOP)) && ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=ARMED_MANUAL))
     {
       printf("received Fire Commands outside of Armed Manual State %x \n",cmd);
       return;
@@ -1187,8 +1197,8 @@ static void ProcessCommands(unsigned char cmd)
 //------------------------------------------------------------------------------------------------
 static void ProcessCalibCommands(unsigned char cmd)
 {
- if (((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=PREARMED) &&
-     ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_MASK)!=ARMED_MANUAL) &&
+ if (((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=PREARMED) &&
+     ((SystemState & CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK)!=ARMED_MANUAL) &&
        !(SystemState & CALIB_ON))
     {
       printf("received Commands outside of Armed Manual State %x \n",cmd);
