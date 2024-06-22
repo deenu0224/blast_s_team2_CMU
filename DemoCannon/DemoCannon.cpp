@@ -449,7 +449,7 @@ static void CreateNoDataAvalable(void)
 static bool OpenCamera(void)
 {
 #if USE_USB_WEB_CAM
-    capture=new cv::VideoCapture("/dev/video8",cv::CAP_V4L);
+    capture=new (std::nothrow) cv::VideoCapture("/dev/video8",cv::CAP_V4L);
     if(!capture->isOpened()) {
         std::cout<<"Failed to open camera."<<std::endl;
         delete capture;
@@ -457,7 +457,7 @@ static bool OpenCamera(void)
     }
 
 #else
-    capture= new lccv::PiCamera();
+    capture= new (std::nothrow) lccv::PiCamera();
     capture->options->video_width=WIDTH;
     capture->options->video_height=HEIGHT;
     capture->options->framerate=30;
@@ -515,7 +515,7 @@ static void CloseCamera(void)
 //------------------------------------------------------------------------------------------------
 static void OpenServos(void)
 {
- Servos = new Servo(0x40, 0.750, 2.250);
+ Servos = new (std::nothrow) Servo(0x40, 0.750, 2.250);
 }
 //------------------------------------------------------------------------------------------------
 // END static void OpenServos
@@ -710,12 +710,12 @@ int main(int argc, const char** argv)
 
 #if USE_TFLITE
  printf("TensorFlow Lite Mode\n");
- detector = new ObjectDetector("../TfLite-2.17/Data/detect.tflite", false);
+ detector = new (std::nothrow) ObjectDetector("../TfLite-2.17/Data/detect.tflite", false);
 #elif USE_IMAGE_MATCH
 
  printf("Image Match Mode\n");
 
- DetectedMatches = new  TDetectedMatches[MAX_DETECTED_MATCHES];
+ DetectedMatches = new (std::nothrow) TDetectedMatches[MAX_DETECTED_MATCHES];
 
 
  if (LoadRefImages(symbols) == -1) 
