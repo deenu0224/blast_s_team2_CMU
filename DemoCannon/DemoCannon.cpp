@@ -902,7 +902,7 @@ static int PrintfSend(const char *fmt, ...)
     pthread_mutex_lock(&TCP_Mutex); 
     va_list args;
     va_start(args, fmt);
-    BytesWritten=vsprintf(Buffer,fmt, args);
+    BytesWritten=vsnprintf(Buffer,sizeof(Buffer),fmt, args);
     va_end(args);
     if (BytesWritten>0)
       {
@@ -1459,7 +1459,7 @@ static void HandleInputChar( Mat &frame)
     {
       char String[1024];
       ImageCount++;
-      sprintf(String,"images/Capture%d.jpg",ImageCount);
+      snprintf(String,sizeof(String),"images/Capture%d.jpg",ImageCount);
       imwrite(String, frame);
       printf("saved %s\n", String);
     }
