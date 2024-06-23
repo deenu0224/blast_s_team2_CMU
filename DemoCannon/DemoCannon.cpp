@@ -228,7 +228,14 @@ static void ServoAngle(int Num,float &Angle)
     if (Angle< MIN_PAN) Angle = MIN_PAN;
     else if (Angle > MAX_PAN) Angle=MAX_PAN;
    }
-  Servos->angle(Num,Angle);
+  if (Servos!=NULL)
+  {
+    Servos->angle(Num,Angle);
+  }
+  else
+  {
+    printf("Servo is not opened!\n");
+  }
   pthread_mutex_unlock(&I2C_Mutex);
 } 
 //------------------------------------------------------------------------------------------------
@@ -450,6 +457,11 @@ static bool OpenCamera(void)
 {
 #if USE_USB_WEB_CAM
     capture=new (std::nothrow) cv::VideoCapture("/dev/video8",cv::CAP_V4L);
+    if (capture==NULL)
+    {
+        printf("Failed to open camera\n");
+        return false;
+    }
     if(!capture->isOpened()) {
         std::cout<<"Failed to open camera."<<std::endl;
         delete capture;
@@ -458,6 +470,11 @@ static bool OpenCamera(void)
 
 #else
     capture= new (std::nothrow) lccv::PiCamera();
+    if (capture==NULL)
+    {
+        printf("Failed to open camera\n");
+        return false;
+    }
     capture->options->video_width=WIDTH;
     capture->options->video_height=HEIGHT;
     capture->options->framerate=30;
@@ -475,6 +492,11 @@ static bool OpenCamera(void)
 //------------------------------------------------------------------------------------------------
 static bool GetFrame(Mat &frame)
 {
+    if (capture==NULL)
+    {
+      printf("Camera was not opened\n");
+      return (false);
+    }
 #if USE_USB_WEB_CAM
     // wait for a new frame from camera and store it into 'frame'
     capture->read(frame);
@@ -516,6 +538,11 @@ static void CloseCamera(void)
 static void OpenServos(void)
 {
  Servos = new (std::nothrow) Servo(0x40, 0.750, 2.250);
+ if (Servos==NULL)
+  {
+    printf("Failed to open Servos\n");
+    return;
+  }
 }
 //------------------------------------------------------------------------------------------------
 // END static void OpenServos
@@ -711,12 +738,21 @@ int main(int argc, const char** argv)
 #if USE_TFLITE
  printf("TensorFlow Lite Mode\n");
  detector = new (std::nothrow) ObjectDetector("../TfLite-2.17/Data/detect.tflite", false);
+ if (detector == NULL)
+   {
+    printf("Error creating detector\n");
+    return -1;
+   }
 #elif USE_IMAGE_MATCH
 
  printf("Image Match Mode\n");
 
  DetectedMatches = new (std::nothrow) TDetectedMatches[MAX_DETECTED_MATCHES];
-
+  if (DetectedMatches == NULL)
+    {
+      printf("Error creating DetectedMatches\n");
+      return -1;
+    }
 
  if (LoadRefImages(symbols) == -1) 
    {
