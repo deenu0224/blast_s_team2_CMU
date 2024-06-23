@@ -26,7 +26,10 @@
 #include "CvImageMatch.h"
 #include "ssd1306.h"
 
-
+//KO ADD
+#include "Crypto.h"
+#include "UserAuthentication.h"
+const char* SHARED_HMAC_KEY = "0123456789";
 //#define USE_TFLITE      1 
 #define USE_IMAGE_MATCH 1
 
@@ -953,6 +956,83 @@ static int PrintfSend(const char *fmt, ...)
       return(BytesWritten);
      }
 }
+
+// KO_ADD
+static int SendLoginEnrollResponse(LogInState_t login_state) {
+    printf("SendLoginEnrollResponse Enter\n");
+    TMesssageLoginEnrollResponse response;
+    response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
+    response.Hdr.Type = htonl(MT_LOGIN_ENROLL_RES);
+    response.LoginState = htonl(login_state);
+
+    // Calculate HMAC
+    std::vector<unsigned char> response_hmac = calculate_hmac(SHARED_HMAC_KEY, &response.LoginState, sizeof(response) - sizeof(TMesssageHeader));
+    memcpy(response.Hdr.HMAC, response_hmac.data(), response_hmac.size());
+
+    pthread_mutex_lock(&TCP_Mutex);
+    if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
+        pthread_mutex_unlock(&TCP_Mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&TCP_Mutex);
+    printf("SendLoginEnrollResponse Exit\n");
+    return 0;
+}
+
+static int SendLoginVerifyResponse(LogInState_t login_state, const std::vector<unsigned char>& token, FailInfo& fail_info) {
+    pthread_mutex_lock(&TCP_Mutex);
+    TMesssageLoginVerifyResponse response = {0,};
+    printf("SendLoginVerifyResponse Enter\n");
+    response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
+    response.Hdr.Type = htonl(MT_LOGIN_VERITY_RES);
+    response.LoginState = htonl((unsigned int)login_state);
+
+    if (login_state == SUCCESS) {
+        response.FailCount = 0;
+        response.Throttle = 0;
+        response.Privilege = htonl(fail_info.Privilege);
+        memcpy(response.Token, token.data(), token.size());
+    }
+    else {
+        response.FailCount = htonl(fail_info.FailCount);
+        response.Throttle = htonl(fail_info.Throttle);
+        response.Privilege = htonl(fail_info.Privilege);
+    }
+
+    // Calculate HMAC
+    std::vector<unsigned char> response_hmac = calculate_hmac(SHARED_HMAC_KEY, &response.LoginState, sizeof(response) - sizeof(TMesssageHeader));
+    memcpy(response.Hdr.HMAC, response_hmac.data(), response_hmac.size());
+
+    if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
+        pthread_mutex_unlock(&TCP_Mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&TCP_Mutex);
+    printf("SendLoginVerifyResponse Exit\n");
+    return 0;
+}
+
+static int SendLoginChangePwResponse(LogInState_t login_state) {
+    printf("SendLoginChangePwResponse Enter\n");
+    pthread_mutex_lock(&TCP_Mutex);
+    TMesssageLoginChangePwResponse response;
+    response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
+    response.Hdr.Type = htonl(MT_LOGIN_CHANGEPW_RES);
+    response.LoginState = (LogInState_t)htonl(login_state);
+
+    // Calculate HMAC
+    std::vector<unsigned char> response_hmac = calculate_hmac(SHARED_HMAC_KEY, &response.LoginState, sizeof(response) - sizeof(TMesssageHeader));
+    memcpy(response.Hdr.HMAC, response_hmac.data(), response_hmac.size());
+
+
+    if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
+        pthread_mutex_unlock(&TCP_Mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&TCP_Mutex);
+    printf("SendLoginChangePwResponse Exit\n");
+    return 0;
+}
 //------------------------------------------------------------------------------------------------
 // END static int PrintfSend
 //------------------------------------------------------------------------------------------------
@@ -1282,6 +1362,15 @@ int GetExpectedTotalLength(int Type)
 		case MT_TARGET_SEQUENCE :
 			expected_total_len = sizeof(TMesssageTargetOrder);
 			break;
+    case MT_LOGIN_ENROLL_REQ :
+      expected_total_len = sizeof(TMesssageLoginEnrollRequest);
+      break;
+    case MT_LOGIN_VERITY_REQ :
+      expected_total_len = sizeof(TMesssageLoginVerifyRequest);
+      break;
+    case MT_LOGIN_CHANGEPW_REQ :
+      expected_total_len = sizeof(TMesssageLoginChangePwRequest);
+      break;
 		default:
 			break;
 	}
@@ -1396,6 +1485,79 @@ static void *NetworkInputThread(void *data)
 
        ProcessStateChangeRequest(msgChangeStateRequest->State);
       }
+      break;
+      case MT_LOGIN_ENROLL_REQ:
+      {
+          printf("MT_LOGIN_ENROLL_REQ");
+       TMesssageLoginEnrollRequest* msgLoginEnroll = (TMesssageLoginEnrollRequest*)Buffer;
+
+       // 1. MsgHdr->HMAC 값과 msgLoginEnroll의 HMAC값이 같은지 확인
+       /*
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageLoginEnrollRequest) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), msgLoginEnroll->Name, sizeof(TMesssageLoginEnrollRequest) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(SHARED_HMAC_KEY, hmac_input.data(), hmac_input.size());
+
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLoginEnroll->Hdr.HMAC)) {
+          SendLoginEnrollResponse(INVALID_MSG);
+          break;
+       }       */
+
+       // 2. Enroll API 호출
+       int enroll_result = EnrollPwd(msgLoginEnroll->Name, msgLoginEnroll->Password);
+
+       // 3. response API 호출
+       LogInState_t login_state = (enroll_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)enroll_result;
+       SendLoginEnrollResponse(login_state);
+      }
+      break;
+      case MT_LOGIN_VERITY_REQ:
+      {
+        printf("MT_LOGIN_VERITY_REQ\n");
+       TMesssageLoginVerifyRequest* msgLoginVerify = (TMesssageLoginVerifyRequest*)Buffer;
+       FailInfo fail_info = {0,};
+
+/*
+       // 1. MsgHdr->HMAC 값과 msgLoginVerify의 HMAC값이 같은지 확인
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageLoginVerifyRequest) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), msgLoginVerify->Name, sizeof(TMesssageLoginVerifyRequest) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(SHARED_HMAC_KEY, hmac_input.data(), hmac_input.size());
+
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLoginVerify->Hdr.HMAC)) {
+          SendLoginVerifyResponse(INVALID_MSG, std::vector<unsigned char>(), fail_info);
+          break;
+       }
+*/
+       // 2. Verify API 호출
+       std::vector<unsigned char> token;
+       int verify_result = VerifyPwd(msgLoginVerify->Name, msgLoginVerify->Password, token, fail_info);
+
+       // 3. Verify 결과를 반환하는 response API 호출
+       LogInState_t login_state = (verify_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)verify_result;
+       SendLoginVerifyResponse(login_state, token, fail_info);
+      }
+      break;
+      case MT_LOGIN_CHANGEPW_REQ:
+      {
+       TMesssageLoginChangePwRequest* msgLoginChangePw = (TMesssageLoginChangePwRequest*)Buffer;
+
+      // 1. MsgHdr->HMAC 값과 msgLoginChangePw의 HMAC값이 같은지 확인
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageLoginChangePwRequest) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), msgLoginChangePw->Name, sizeof(TMesssageLoginChangePwRequest) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(SHARED_HMAC_KEY, hmac_input.data(), hmac_input.size());
+
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLoginChangePw->Hdr.HMAC)) {
+           SendLoginChangePwResponse(INVALID_TOKEN);
+           break;
+       }
+
+      // 2. ChangePwd API 호출
+       std::vector<unsigned char> token(msgLoginChangePw->Token, msgLoginChangePw->Token + 32);
+       int change_pwd_result = ChangePwd(msgLoginChangePw->Name, msgLoginChangePw->Password, token);
+
+      // 3. response API 호출
+       LogInState_t login_state = (change_pwd_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)INVALID_OPERATION;
+       SendLoginChangePwResponse(login_state);
+       }
       break;
 
       default:
