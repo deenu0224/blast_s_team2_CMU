@@ -90,7 +90,7 @@ static bool                   HaveOLED=false;
 static int                    OLED_Font=0;
 static pthread_t              NetworkThreadID=-1;
 static pthread_t              EngagementThreadID=-1;
-static volatile SystemState_t SystemState= SAFE;
+static volatile SystemState_t SystemState= UNKNOWN;
 static pthread_mutex_t        TCP_Mutex;
 static pthread_mutex_t        GPIO_Mutex;
 static pthread_mutex_t        I2C_Mutex;
@@ -862,7 +862,13 @@ int main(int argc, const char** argv)
      }
 
     
-    if ((isConnected) && (TcpSendImageAsJpeg(TcpConnectedPort,ResizedFrame)<0))  break;
+    if (isConnected)
+		{
+			
+		    pthread_mutex_lock(&TCP_Mutex); 
+			if(TcpSendImageAsJpeg(TcpConnectedPort,ResizedFrame)<0)  break;
+			pthread_mutex_unlock(&TCP_Mutex); 
+    	}
    
     Tend = chrono::steady_clock::now();
     avfps = chrono::duration_cast <chrono::milliseconds> (Tend - Tbegin).count();
@@ -930,6 +936,7 @@ static int PrintfSend(const char *fmt, ...)
     char Buffer[2048];
     int  BytesWritten;
     int  retval;
+	if(isConnected == false) return -1;
     pthread_mutex_lock(&TCP_Mutex); 
     va_list args;
     va_start(args, fmt);
@@ -960,6 +967,8 @@ static int PrintfSend(const char *fmt, ...)
 // KO_ADD
 
 static int SendSharedHmacKey(char* HMACKey) {
+	if(isConnected == false) return -1;
+
     printf("SendSharedHmacKey Enter\n");
     TMesssageSharedHmacKey response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
@@ -980,6 +989,8 @@ static int SendSharedHmacKey(char* HMACKey) {
 }
 
 static int SendLoginEnrollResponse(LogInState_t login_state, const char* key) {
+	if(isConnected == false) return -1;
+
     printf("SendLoginEnrollResponse Enter\n");
     TMesssageLoginEnrollResponse response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
@@ -1001,6 +1012,8 @@ static int SendLoginEnrollResponse(LogInState_t login_state, const char* key) {
 }
 
 static int SendLoginVerifyResponse(LogInState_t login_state, const std::vector<unsigned char>& token, FailInfo& fail_info, const char* key) {
+	if(isConnected == false) return -1;
+
     pthread_mutex_lock(&TCP_Mutex);
     TMesssageLoginVerifyResponse response = {0,};
     printf("SendLoginVerifyResponse Enter\n");
@@ -1034,6 +1047,8 @@ static int SendLoginVerifyResponse(LogInState_t login_state, const std::vector<u
 }
 
 static int SendLoginChangePwResponse(LogInState_t login_state, const char* key) {
+	if(isConnected == false) return -1;
+
     printf("SendLoginChangePwResponse Enter\n");
     pthread_mutex_lock(&TCP_Mutex);
     TMesssageLoginChangePwResponse response;
@@ -1061,6 +1076,7 @@ static int SendLoginChangePwResponse(LogInState_t login_state, const char* key) 
 //------------------------------------------------------------------------------------------------
 static int SendSystemState(SystemState_t State)
 {
+	if(isConnected == false) return -1;
  TMesssageSystemState StateMsg;
  int                  retval;
  pthread_mutex_lock(&TCP_Mutex);
@@ -1407,6 +1423,14 @@ int IsValidRecvMessageLength(int body_len, int Type)
 	return true;
 }
 
+void system_reset(void)
+{
+	laser(false);
+	calibrate(false);
+	fire(false);
+	SystemState=SAFE;
+}
+
 //------------------------------------------------------------------------------------------------
 // static void *NetworkInputThread
 //------------------------------------------------------------------------------------------------
@@ -1437,11 +1461,12 @@ static void *NetworkInputThread(void *data)
 	   	isConnected=true;
 	   	printf("Accepted connection Request\n");
 	   	CloseTcpListenPort(&TcpListenPort);  // Close listen port
-	   	SendSystemState(SystemState);
       // Server creates a secret. And the secret to use hmac key share between server and client.
       SendSharedHmacKey(HMACKey);
       // load keys from filesystem
       initialize_keys();
+	  
+	   	ProcessStateChangeRequest(SAFE);
 
 	   	continue;
  	}
@@ -1452,6 +1477,7 @@ static void *NetworkInputThread(void *data)
 	    if (retval == 0) printf("Client Disconnected\n");
 	    else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
 	    isConnected = false;
+		system_reset();
  		CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
 		continue;
 	}
@@ -1463,6 +1489,7 @@ static void *NetworkInputThread(void *data)
      {
 	      printf("oversized message error %d\n",MsgHdr->Len);
 	      isConnected = false;
+		  system_reset();
 		  CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
 		  continue;
      }
@@ -1470,6 +1497,7 @@ static void *NetworkInputThread(void *data)
 	   if (retval == 0) printf("Client Disconnected\n");
 	   else printf("Connection Lost %s\n", ERR_reason_error_string(ERR_get_error()));
 	   isConnected = false;
+	   system_reset();
 	   CloseTcpConnectedPort(&TcpConnectedPort); // Close network port;
 	   continue;
    }

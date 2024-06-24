@@ -185,7 +185,7 @@ TTcpConnectedPort *AcceptTcpConnection(TTcpListenPort *TcpListenPort,
 	return NULL;
   }
   
-  	TcpConnectedPort->ssl = SSL_new(ctx);
+  	TcpConnectedPort->ssl = SSL_new(TcpConnectedPort->ctx);
 	SSL_set_fd(TcpConnectedPort->ssl, TcpConnectedPort->ConnectedFd);
 
 	if (SSL_accept(TcpConnectedPort->ssl) <= 0) {
