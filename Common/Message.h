@@ -73,6 +73,7 @@ typedef struct
 {
     unsigned int Len;
     unsigned int Type;
+	unsigned long long seqN;
     char         HMAC[32];
 } __attribute__((packed)) TMesssageHeader;
 

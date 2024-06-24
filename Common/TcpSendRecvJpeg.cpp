@@ -6,15 +6,20 @@
 // Send and receives OpenCV Mat Images in a Tcp Stream commpressed as Jpeg images 
 //------------------------------------------------------------------------------------------------
 
+#include <stdint.h>
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <opencv2/highgui/highgui.hpp>
 #include "TcpSendRecvJpeg.h"
 #include "Message.h"
+#include "lgpio.h"
 
 static  int init_values[2] = { cv::IMWRITE_JPEG_QUALITY,80 }; //default(95) 0-100
 static  std::vector<int> param (&init_values[0], &init_values[0]+2);
 static  std::vector<uchar> sendbuff;//buffer for coding
+
+uint64_t GetSendSeqNum(void);
 
 //-----------------------------------------------------------------
 // TcpSendImageAsJpeg - Sends a Open CV Mat Image commressed as a 
@@ -27,6 +32,7 @@ int TcpSendImageAsJpeg(TTcpConnectedPort * TcpConnectedPort,cv::Mat Image)
     MsgHdr.Type=htonl(MT_IMAGE);
     cv::imencode(".jpg", Image, sendbuff, param);
     MsgHdr.Len=htonl(sendbuff.size()); // convert image size to network format
+    MsgHdr.seqN=htonll(GetSendSeqNum());
     if (WriteDataTcp(TcpConnectedPort,(unsigned char *)&MsgHdr,sizeof(TMesssageHeader))!=sizeof(TMesssageHeader))
     return(-1);
     return(WriteDataTcp(TcpConnectedPort,sendbuff.data(), sendbuff.size()));

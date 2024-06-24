@@ -5,6 +5,7 @@
 // Versions:
 // 1.0 April 2024 - initial version
 //------------------------------------------------------------------------------------------------
+#include <stdint.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <opencv2/core/core.hpp>
@@ -103,6 +104,8 @@ static pthread_cond_t         Engagement_cv;
 static float                  xCorrect=60.0,yCorrect=-90.0;
 static volatile bool          isConnected=false;
 static Servo                  *Servos=NULL;
+static volatile unsigned long long RecvSeqNum = 0;
+static volatile unsigned long long SendSeqNum = 0;
 
 
 #if USE_USB_WEB_CAM
@@ -141,6 +144,14 @@ static ObjectDetector *detector;
 
 /*************************************** IMAGE_MATCH END *****************************************************/ 
 #endif
+
+uint64_t GetSendSeqNum(void)
+{
+	if(SendSeqNum > 0x0FFFFFFFFFFFFFFF)
+		SendSeqNum = 0;
+	return ++SendSeqNum;
+}
+
 //------------------------------------------------------------------------------------------------
 // static void ReadOffsets
 //------------------------------------------------------------------------------------------------
@@ -948,6 +959,7 @@ static int PrintfSend(const char *fmt, ...)
        BytesWritten++;
        MsgHdr.Len=htonl(BytesWritten);
        MsgHdr.Type=htonl(MT_TEXT);
+	   MsgHdr.seqN=htonll(GetSendSeqNum());
        if (WriteDataTcp(TcpConnectedPort,(unsigned char *)&MsgHdr, sizeof(TMesssageHeader))!=sizeof(TMesssageHeader)) 
            {
             pthread_mutex_unlock(&TCP_Mutex);
@@ -973,6 +985,7 @@ static int SendSharedHmacKey(char* HMACKey) {
     TMesssageSharedHmacKey response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
     response.Hdr.Type = htonl(MT_SHARED_HMAC_KEY);
+	response.Hdr.seqN=htonll(GetSendSeqNum());
 
     std::vector<unsigned char> sharedHmacKey = generate_random_bytes(HMAC_SIZE);
     memcpy(response.SharedKey, sharedHmacKey.data(), HMAC_SIZE);
@@ -995,6 +1008,7 @@ static int SendLoginEnrollResponse(LogInState_t login_state, const char* key) {
     TMesssageLoginEnrollResponse response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
     response.Hdr.Type = htonl(MT_LOGIN_ENROLL_RES);
+	response.Hdr.seqN=htonll(GetSendSeqNum());
     response.LoginState = htonl(login_state);
 
     // Calculate HMAC
@@ -1019,6 +1033,7 @@ static int SendLoginVerifyResponse(LogInState_t login_state, const std::vector<u
     printf("SendLoginVerifyResponse Enter\n");
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
     response.Hdr.Type = htonl(MT_LOGIN_VERITY_RES);
+	response.Hdr.seqN=htonll(GetSendSeqNum());
     response.LoginState = htonl((unsigned int)login_state);
 
     if (login_state == SUCCESS) {
@@ -1054,6 +1069,7 @@ static int SendLoginChangePwResponse(LogInState_t login_state, const char* key) 
     TMesssageLoginChangePwResponse response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
     response.Hdr.Type = htonl(MT_LOGIN_CHANGEPW_RES);
+	response.Hdr.seqN=htonll(GetSendSeqNum());
     response.LoginState = (LogInState_t)htonl(login_state);
 
     // Calculate HMAC
@@ -1083,6 +1099,7 @@ static int SendSystemState(SystemState_t State)
  StateMsg.State=(SystemState_t)htonl(State);
  StateMsg.Hdr.Len=htonl(sizeof(StateMsg.State));
  StateMsg.Hdr.Type=htonl(MT_STATE);
+ StateMsg.Hdr.seqN=htonll(GetSendSeqNum());
  OLED_UpdateStatus();
  retval=WriteDataTcp(TcpConnectedPort,(unsigned char *)&StateMsg,sizeof(TMesssageSystemState));
  pthread_mutex_unlock(&TCP_Mutex);
@@ -1429,6 +1446,7 @@ void system_reset(void)
 	calibrate(false);
 	fire(false);
 	SystemState=SAFE;
+	RecvSeqNum = 0;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1484,7 +1502,8 @@ static void *NetworkInputThread(void *data)
    MsgHdr=(TMesssageHeader *)Buffer;
    MsgHdr->Len = ntohl(MsgHdr->Len);
    MsgHdr->Type = ntohl(MsgHdr->Type);
-
+	MsgHdr->seqN = ntohll(MsgHdr->seqN);
+	
    if (!IsValidRecvMessageLength(MsgHdr->Len, MsgHdr->Type))
      {
 	      printf("oversized message error %d\n",MsgHdr->Len);
@@ -1503,6 +1522,24 @@ static void *NetworkInputThread(void *data)
    }
 	printf("Recv type : %d \t Len : %d\n", MsgHdr->Type, MsgHdr->Len + sizeof(TMesssageHeader));
 
+
+		if(MsgHdr->seqN <= RecvSeqNum)
+	{
+		printf("seq. Num is already used %llx\n", MsgHdr->seqN);
+		continue;
+	}
+	else
+	{
+		if(MsgHdr->seqN >= 0x0FFFFFFFFFFFFFFF)
+		{
+			RecvSeqNum = 0;
+		}
+		else
+		{
+			RecvSeqNum = MsgHdr->seqN;
+		}
+	}
+	printf("seq. Num recieved %llx\n", MsgHdr->seqN);
    switch(MsgHdr->Type)
     {
       case MT_COMMANDS: 
