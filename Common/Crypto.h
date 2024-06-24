@@ -7,6 +7,7 @@
 #define HMAC_SIZE 32
 #define SHA256_DIGEST_LENGTH 32
 #define AES_BLOCK_SIZE 16
+#define IV_LEN 16
 
 std::vector<unsigned char> calculate_hmac(const char* key, 
     const void* data, size_t data_len);

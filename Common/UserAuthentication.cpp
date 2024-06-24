@@ -8,19 +8,62 @@
 #include <vector>
 #include <cstring>
 #include <unordered_map>
+#include <mutex>
 
 // 전역 변수로 TokenInfo 선언
 TokenInfo global_token_info;
 
 #define USER_FILE       "userinfo.dat" 
 #define AUTH_FAIL_FILE  "failinfo.dat"
-#define IV_LEN 16
-const unsigned char KEY[32] = "0123456789";//{0 /* 32바이트의 AES 키 */ };
-const unsigned char IV[16] = "0123456789";//{0 /* 32바이트의 AES 키 */ };
 
-const char HMAC_KEY[32] = {/* HMACK_EY*/};
+// 전역 변수 선언
+unsigned char KEY[32];
+char HMAC_KEY[32];
+std::once_flag load_keys_flag;
 
 #if 1
+
+bool load_keys() {
+    const char* aes_key_file = "enc_key";
+    const char* hmac_key_file = "hmac_key";
+
+    std::ifstream aes_key_ifs(aes_key_file, std::ios::binary);
+    if (!aes_key_ifs) {
+        std::cerr << "Failed to open AES key file: " << aes_key_file << std::endl;
+        return false;
+    }
+
+    std::ifstream hmac_key_ifs(hmac_key_file, std::ios::binary);
+    if (!hmac_key_ifs) {
+        std::cerr << "Failed to open HMAC key file: " << hmac_key_file << std::endl;
+        return false;
+    }
+
+    aes_key_ifs.read((char*)KEY, 32);
+    if (aes_key_ifs.gcount() != 32) {
+        std::cerr << "Failed to read 32 bytes from AES key file" << std::endl;
+        return false;
+    }
+
+    hmac_key_ifs.read(HMAC_KEY, 32);
+    if (hmac_key_ifs.gcount() != 32) {
+        std::cerr << "Failed to read 32 bytes from HMAC key file" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+void initialize_keys() {
+    std::call_once(load_keys_flag, []() {
+        if (!load_keys()) {
+            std::cerr << "Failed to load keys" << std::endl;
+            return;
+        }
+    });
+}
+
+
 bool save_user(const UserHandle& user_handle) {
     std::ofstream file(USER_FILE, std::ios::binary | std::ios::app);
     if (!file.is_open()) return false;
@@ -58,7 +101,7 @@ bool save_user(const UserHandle& user_handle) {
 bool load_user(const std::string& user_id, UserHandle& user_handle) {
     std::ifstream file(USER_FILE, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "파일을 열 수 없습니다." << std::endl;
+        std::cerr << "Not open user info" << std::endl;
         return false;
     }
 
@@ -81,7 +124,7 @@ bool load_user(const std::string& user_id, UserHandle& user_handle) {
             file.read(sUserInfo.EncryptedData, sUserInfo.EncryptedDataLen);
 
             if (!file.good()) {
-                std::cerr << "파일에서 데이터를 읽는 도중 오류가 발생했습니다." << std::endl;
+                std::cerr << "Fail to read a file" << std::endl;
                 delete[] sUserInfo.EncryptedData;
                 return false;
             }
@@ -91,7 +134,7 @@ bool load_user(const std::string& user_id, UserHandle& user_handle) {
             int decrypted_len = 0;
 
             if (!aes_decrypt(KEY, sUserInfo.Iv, reinterpret_cast<unsigned char*>(sUserInfo.EncryptedData), sUserInfo.EncryptedDataLen, decrypted_buffer.data(), decrypted_len)) {
-                std::cerr << "복호화에 실패했습니다." << std::endl;
+                std::cerr << "Fail to decrypt." << std::endl;
                 delete[] sUserInfo.EncryptedData;
                 return false;
             }
@@ -365,6 +408,19 @@ bool delete_fail_info(const std::string& user_id_str) {
     return out_file.good();
 }
 
+int token_verifier(const std::vector<unsigned char>& token) {
+// 1. token이 유효한지 검증
+    std::vector<unsigned char> token_hmac_input(sizeof(TokenInfo));
+    memcpy(token_hmac_input.data(), &global_token_info, sizeof(TokenInfo));
+    std::vector<unsigned char> expected_token = calculate_hmac(HMAC_KEY, token_hmac_input.data(), token_hmac_input.size());
+
+    if (token != expected_token) {
+        std::cerr << "Invalid token" << std::endl;
+        return INVALID_TOKEN;
+    }
+    return 0;
+}
+
 int EnrollPwd(const char* username, const char* password) {
     std::vector<unsigned char> user_id = sha256(username);
     std::string user_id_str(user_id.begin(), user_id.end());
@@ -415,7 +471,7 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
     std::ifstream file(USER_FILE, std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "Failed to open user file" << std::endl;
-        return -1;   // Error 처리 필요 등록된 유저가 없음.
+        return NOT_EXIST_USER;   //등록된 유저가 없음.
     }
 
     bool user_found = false;
@@ -463,7 +519,6 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
             }
         }
     }
-
     // 2. 전달받은 password를 UserHandle의 Password에 할당
     memcpy(user_handle.Password, password, sizeof(user_handle.Password));
 
@@ -495,7 +550,6 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
             std::cerr << "Failed to save fail info" << std::endl;
             return INVALID_OPERATION;
         }
-
         return INVALID_PASSWORD;
     } else {
         // 4.4. 인증 성공 시 해당 유저의 FailInfo를 삭제한다.

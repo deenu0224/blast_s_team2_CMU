@@ -18,6 +18,7 @@
 #define MT_LOGIN_ENROLL_RES     12
 #define MT_LOGIN_VERITY_RES     13
 #define MT_LOGIN_CHANGEPW_RES   14
+#define MT_SHARED_HMAC_KEY      15
 
 #define PAN_LEFT_START  0x01
 #define PAN_RIGHT_START 0x02
@@ -77,69 +78,69 @@ typedef struct
     unsigned int Len;
     unsigned int Type;
     char         HMAC[32];
-} TMesssageHeader;
+} __attribute__((packed)) TMesssageHeader;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned char  Commands;
-} TMesssageCommands;
+} __attribute__((packed)) TMesssageCommands;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char  FiringOrder[11];
-} TMesssageTargetOrder;
+} __attribute__((packed)) TMesssageTargetOrder;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char   Text[1];
-} TMesssageText;
+} __attribute__((packed)) TMesssageText;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned char   Image[1];
-} TMesssageImage;
+} __attribute__((packed)) TMesssageImage;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char   Code[10];
-} TMesssagePreArm;
+} __attribute__((packed)) TMesssagePreArm;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     SystemState_t   State;
-} TMesssageSystemState;
+} __attribute__((packed)) TMesssageSystemState;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     SystemState_t   State;
-} TMesssageChangeStateRequest;
+} __attribute__((packed)) TMesssageChangeStateRequest;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned char  Commands;
-} TMesssageCalibCommands;
+} __attribute__((packed)) TMesssageCalibCommands;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char    Name[32];
     char    Password[32];
-} TMesssageLoginEnrollRequest;
+} __attribute__((packed)) TMesssageLoginEnrollRequest;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char    Name[32];
     char    Password[32];
-} TMesssageLoginVerifyRequest;
+} __attribute__((packed)) TMesssageLoginVerifyRequest;
 
 typedef struct
 {
@@ -147,29 +148,35 @@ typedef struct
     char    Name[32];
     char    Password[32];
     char    Token[32];
-} TMesssageLoginChangePwRequest;
+} __attribute__((packed)) TMesssageLoginChangePwRequest;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned int  LoginState;
-} TMesssageLoginEnrollResponse;
+} __attribute__((packed)) TMesssageLoginEnrollResponse;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned int  LoginState;
     unsigned int    FailCount;
-    unsigned long   Throttle;
-    unsigned int    Privilege;
+    unsigned long long  Throttle;
+    unsigned int    Privilege;  // 0 : user 1: admin, default = 0
     char            Token[32];
-} TMesssageLoginVerifyResponse;
+} __attribute__((packed)) TMesssageLoginVerifyResponse;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned int  LoginState;
-} TMesssageLoginChangePwResponse;
+} __attribute__((packed)) TMesssageLoginChangePwResponse;
+
+typedef struct
+{
+    TMesssageHeader Hdr;
+    char            SharedKey[32];
+}__attribute__((packed)) TMesssageSharedHmacKey;
 
 #endif
 //------------------------------------------------------------------------------------------------
