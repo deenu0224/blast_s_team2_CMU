@@ -46,8 +46,7 @@ enum SystemState_t : unsigned int
     ARMED        = 0x10,
     FIRING       = 0x20,
     LASER_ON     = 0x40,
-    CALIB_ON     = 0x80,
-    CAMERA_ON     = 0x100,
+    CALIB_ON     = 0x80 
 };
 
 enum LogInState_t : unsigned int
@@ -68,10 +67,7 @@ enum LogInState_t : unsigned int
 #define CLEAR_FIRING_MASK   (~FIRING)
 #define CLEAR_ARMED_MASK    (~ARMED)
 #define CLEAR_CALIB_MASK    (~CALIB_ON)
-#define CLEAR_CAMERA_MASK    (~CAMERA_ON)
 #define CLEAR_LASER_FIRING_ARMED_CALIB_MASK  (~(LASER_ON|FIRING|ARMED|CALIB_ON))
-#define CLEAR_LASER_FIRING_ARMED_CALIB_CAMERA_MASK  (~(LASER_ON|FIRING|ARMED|CALIB_ON|CAMERA_ON))
-
 
 typedef struct
 {
