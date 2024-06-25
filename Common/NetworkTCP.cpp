@@ -195,6 +195,15 @@ TTcpConnectedPort *AcceptTcpConnection(TTcpListenPort *TcpListenPort,
 	} else {
 	    ;
 	}
+
+  if (getpeername(TcpConnectedPort->ConnectedFd, (struct sockaddr *)&addr, &len) == -1)
+  {
+      perror("getpeername");
+      delete TcpConnectedPort;
+      return NULL;
+  }
+  inet_ntop(AF_INET, &(addr.sin_addr), TcpConnectedPort->ClientIp, INET_ADDRSTRLEN);
+  printf("Connected IP Address: %s\n", TcpConnectedPort->ClientIp);
   
  int bufsize = 200 * 1024;
  if (setsockopt(TcpConnectedPort->ConnectedFd, SOL_SOCKET, 

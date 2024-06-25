@@ -42,6 +42,7 @@ typedef struct
 typedef struct
 {
  SOCKET_FD_TYPE ConnectedFd;
+ char ClientIp[INET_ADDRSTRLEN];
  SSL* ssl;
  SSL_CTX* ctx;
 } TTcpConnectedPort;
