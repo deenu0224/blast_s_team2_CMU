@@ -996,7 +996,7 @@ static int PrintfSend(const char *fmt, ...)
 
 static int SendSharedHmacKey(char* HMACKey) {
 	if(isConnected == false) return -1;
-
+    pthread_mutex_lock(&TCP_Mutex);
     printf("SendSharedHmacKey Enter\n");
     TMesssageSharedHmacKey response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
@@ -1007,7 +1007,6 @@ static int SendSharedHmacKey(char* HMACKey) {
     memcpy(response.SharedKey, sharedHmacKey.data(), HMAC_SIZE);
     memcpy(HMACKey, sharedHmacKey.data(), HMAC_SIZE);
 
-    pthread_mutex_lock(&TCP_Mutex);
     if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
         pthread_mutex_unlock(&TCP_Mutex);
         return -1;
@@ -1021,6 +1020,7 @@ static int SendLoginEnrollResponse(LogInState_t login_state, const char* key) {
 	if(isConnected == false) return -1;
 
     printf("SendLoginEnrollResponse Enter\n");
+    pthread_mutex_lock(&TCP_Mutex);
     TMesssageLoginEnrollResponse response;
     response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
     response.Hdr.Type = htonl(MT_LOGIN_ENROLL_RES);
@@ -1031,7 +1031,6 @@ static int SendLoginEnrollResponse(LogInState_t login_state, const char* key) {
     std::vector<unsigned char> response_hmac = calculate_hmac(key, &response.LoginState, sizeof(response) - sizeof(TMesssageHeader));
     memcpy(response.Hdr.HMAC, response_hmac.data(), response_hmac.size());
 
-    pthread_mutex_lock(&TCP_Mutex);
     if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
         pthread_mutex_unlock(&TCP_Mutex);
         return -1;
@@ -1098,6 +1097,28 @@ static int SendLoginChangePwResponse(LogInState_t login_state, const char* key) 
     }
     pthread_mutex_unlock(&TCP_Mutex);
     printf("SendLoginChangePwResponse Exit\n");
+    return 0;
+}
+
+static int SendLogoutResponse(LogInState_t login_state, const char* key) {
+    printf("SendLogoutResponse Enter\n");
+    pthread_mutex_lock(&TCP_Mutex);
+    TMesssageLogoutResponse response;
+    response.Hdr.Len = htonl(sizeof(response) - sizeof(response.Hdr));
+    response.Hdr.Type = htonl(MT_LOGOUT_RES);
+	response.Hdr.seqN=htonll(GetSendSeqNum());
+    response.LoginState = (LogInState_t)htonl(login_state);
+
+    // Calculate HMAC
+    std::vector<unsigned char> response_hmac = calculate_hmac(key, &response.LoginState, sizeof(response) - sizeof(TMesssageHeader));
+    memcpy(response.Hdr.HMAC, response_hmac.data(), response_hmac.size());
+
+    if (WriteDataTcp(TcpConnectedPort, reinterpret_cast<unsigned char*>(&response), sizeof(response)) != sizeof(response)) {
+        pthread_mutex_unlock(&TCP_Mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&TCP_Mutex);
+    printf("SendLogoutResponse Exit\n");
     return 0;
 }
 //------------------------------------------------------------------------------------------------
@@ -1462,6 +1483,9 @@ int GetExpectedTotalLength(int Type)
       break;
     case MT_LOGIN_CHANGEPW_REQ :
       expected_total_len = sizeof(TMesssageLoginChangePwRequest);
+      		break;
+    	case MT_LOGOUT_REQ :
+      		expected_total_len = sizeof(TMesssageLogoutRequest);
       break;
 		default:
 			break;
@@ -1481,6 +1505,7 @@ int IsValidRecvMessageLength(int body_len, int Type)
 
 void system_reset(void)
 {
+    GlobalResetToken();
 	laser(false);
 	calibrate(false);
 	fire(false);
@@ -1584,34 +1609,94 @@ static void *NetworkInputThread(void *data)
       case MT_COMMANDS: 
       {
        TMesssageCommands *msgCmds=(TMesssageCommands *)Buffer;
-       ProcessCommands(msgCmds->Commands);
+       
+      std::vector<unsigned char> hmac_input(sizeof(TMesssageCommands) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), &msgCmds->Commands, sizeof(TMesssageCommands) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+       
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgCmds->Hdr.HMAC)) {
+          printf("Diffenet HMAC\n");
+          break;
+       }
+       std::vector<unsigned char> token(msgCmds->Token, msgCmds->Token + HMAC_SIZE);
+       if(!TokenVerifier(token)) {
+         ProcessCommands(msgCmds->Commands);
+       }
       }
       break;
       case MT_CALIB_COMMANDS: 
       {
        TMesssageCalibCommands *msgCmds=(TMesssageCalibCommands *)Buffer;
-       ProcessCalibCommands(msgCmds->Commands);
+
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageCalibCommands) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), &msgCmds->Commands, sizeof(TMesssageCalibCommands) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+       
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgCmds->Hdr.HMAC)) {
+          printf("Diffenet HMAC\n");
+          break;
+       }
+
+       std::vector<unsigned char> token(msgCmds->Token, msgCmds->Token + HMAC_SIZE);
+       if(!TokenVerifier(token)) {
+         ProcessCalibCommands(msgCmds->Commands);
+       }
       }
       break;
 
       case MT_TARGET_SEQUENCE: 
       {
        TMesssageTargetOrder *msgTargetOrder=(TMesssageTargetOrder *)Buffer;
-       ProcessFiringOrder(msgTargetOrder->FiringOrder);
+
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageTargetOrder) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), &msgTargetOrder->FiringOrder, sizeof(TMesssageTargetOrder) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+       
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgTargetOrder->Hdr.HMAC)) {
+          printf("Diffenet HMAC\n");
+          break;
+       }
+       std::vector<unsigned char> token(msgTargetOrder->Token, msgTargetOrder->Token + HMAC_SIZE);
+       if(!TokenVerifier(token)) {
+         ProcessFiringOrder(msgTargetOrder->FiringOrder);
+       }
       }
       break;
       case MT_PREARM: 
       {
        TMesssagePreArm *msgPreArm=(TMesssagePreArm *)Buffer;
-       ProcessPreArm(msgPreArm->Code);
+       std::vector<unsigned char> hmac_input(sizeof(TMesssagePreArm) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), &msgPreArm->Code, sizeof(TMesssagePreArm) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+       
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgPreArm->Hdr.HMAC)) {
+          printf("Diffenet HMAC\n");
+          break;
+       }
+       std::vector<unsigned char> token(msgPreArm->Token, msgPreArm->Token + HMAC_SIZE);
+       if(!TokenVerifier(token)) {
+         ProcessPreArm(msgPreArm->Code);
+       }
       }
       break;
       case MT_STATE_CHANGE_REQ: 
       {
        TMesssageChangeStateRequest *msgChangeStateRequest=(TMesssageChangeStateRequest *)Buffer;
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageChangeStateRequest) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), &msgChangeStateRequest->State, sizeof(TMesssageChangeStateRequest) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+
        msgChangeStateRequest->State=(SystemState_t)ntohl(msgChangeStateRequest->State);
 
-       ProcessStateChangeRequest(msgChangeStateRequest->State);
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgChangeStateRequest->Hdr.HMAC)) {
+          printf("Diffenet HMAC\n");
+          break;
+       }
+
+       std::vector<unsigned char> token(msgChangeStateRequest->Token, msgChangeStateRequest->Token + HMAC_SIZE);
+       if(!TokenVerifier(token)) {
+         ProcessStateChangeRequest(msgChangeStateRequest->State);
+       }
       }
       break;
       case MT_LOGIN_ENROLL_REQ:
@@ -1625,9 +1710,6 @@ static void *NetworkInputThread(void *data)
        memcpy(hmac_input.data(), msgLoginEnroll->Name, sizeof(TMesssageLoginEnrollRequest) - sizeof(TMesssageHeader));
        std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
        
-       printf("hmac key = start %02x,%02x,%02x, %02x,,,,END %02x,%02x,%02x, %02x\n", HMACKey[0], HMACKey[1], HMACKey[2], HMACKey[3], HMACKey[28], HMACKey[29], HMACKey[30], HMACKey[31]);
-
-
        if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLoginEnroll->Hdr.HMAC)) {
           printf("Diffenet HMAC\n");
           SendLoginEnrollResponse(INVALID_MSG, HMACKey);
@@ -1638,7 +1720,7 @@ static void *NetworkInputThread(void *data)
        int enroll_result = EnrollPwd(msgLoginEnroll->Name, msgLoginEnroll->Password);
 
        // 3. response API 호출
-       LogInState_t login_state = (enroll_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)enroll_result;
+	   LogInState_t login_state = (enroll_result == 0) ? (LogInState_t)E_SUCCESS : (LogInState_t)enroll_result;
        SendLoginEnrollResponse(login_state, HMACKey);
       }
       break;
@@ -1680,7 +1762,8 @@ static void *NetworkInputThread(void *data)
        std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
 
        if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLoginChangePw->Hdr.HMAC)) {
-           SendLoginChangePwResponse(INVALID_TOKEN, HMACKey);
+           printf("different HMAC\n");
+           SendLoginChangePwResponse(INVALID_MSG, HMACKey);
            break;
        }
 
@@ -1689,8 +1772,30 @@ static void *NetworkInputThread(void *data)
        int change_pwd_result = ChangePwd(msgLoginChangePw->Name, msgLoginChangePw->Password, token);
 
       // 3. response API 호출
-       LogInState_t login_state = (change_pwd_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)change_pwd_result;
+       LogInState_t login_state = (change_pwd_result == 0) ? (LogInState_t)C_SUCCESS : (LogInState_t)change_pwd_result;
        SendLoginChangePwResponse(login_state, HMACKey);
+       }
+      break;
+      case MT_LOGOUT_REQ:
+      {
+       TMesssageLogoutRequest* msgLogout = (TMesssageLogoutRequest*)Buffer;
+
+       std::vector<unsigned char> hmac_input(sizeof(TMesssageLogoutRequest) - sizeof(TMesssageHeader));
+       memcpy(hmac_input.data(), msgLogout->Token, sizeof(TMesssageLogoutRequest) - sizeof(TMesssageHeader));
+       std::vector<unsigned char> calculated_hmac = calculate_hmac(HMACKey, hmac_input.data(), hmac_input.size());
+
+       if (!std::equal(calculated_hmac.begin(), calculated_hmac.end(), msgLogout->Hdr.HMAC)) {
+           SendLogoutResponse(INVALID_TOKEN, HMACKey);
+           break;
+       }
+
+      // 2. Call ResetToken
+       std::vector<unsigned char> token(msgLogout->Token, msgLogout->Token + 32);
+       int reset_token_result = ResetToken(token);
+
+      // 3. response API ???
+       LogInState_t login_state = (reset_token_result == 0) ? (LogInState_t)SUCCESS : (LogInState_t)reset_token_result;
+       SendLogoutResponse(login_state, HMACKey);
        }
       break;
 

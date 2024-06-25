@@ -65,9 +65,12 @@ void initialize_keys() {
 
 
 bool save_user(const UserHandle& user_handle) {
-    std::ofstream file(USER_FILE, std::ios::binary | std::ios::app);
-    if (!file.is_open()) return false;
+    std::ifstream in_file(USER_FILE, std::ios::binary);
+    bool user_found = false;
+    std::streampos current_pos = in_file.tellg();
+    if (!in_file.is_open()) return false;
     StoredUserInfo sUserInfo = {0,};
+    printf("Store user info");
 
     std::vector<unsigned char> iv = generate_random_bytes(16);
     
@@ -82,6 +85,7 @@ bool save_user(const UserHandle& user_handle) {
     std::vector<unsigned char> encrypted_buffer(buffer.size() + AES_BLOCK_SIZE);
     int encrypted_len = 0;
     if (!aes_encrypt(KEY, iv.data(), buffer.data(), buffer.size(), encrypted_buffer.data(), encrypted_len)) {
+        printf("encryption failed");
         return false;
     }
 
@@ -90,16 +94,49 @@ bool save_user(const UserHandle& user_handle) {
     
     memset(sUserInfo.EncryptedData, 0x0, sUserInfo.EncryptedDataLen);
     memcpy(sUserInfo.EncryptedData, encrypted_buffer.data(), sUserInfo.EncryptedDataLen);
+     
+    while (in_file.peek() != EOF) {
+        StoredUserInfo tmpUserInfo = {0,};
+        current_pos = in_file.tellg();
+        // UserId를 읽음
+        in_file.read(reinterpret_cast<char*>(&tmpUserInfo.UserId), sizeof(tmpUserInfo.UserId));
+        if (!in_file.good()) break;
 
-    file.write(reinterpret_cast<const char*>(&sUserInfo), sizeof(sUserInfo) - sizeof(sUserInfo.EncryptedData));
-    file.write(sUserInfo.EncryptedData, sUserInfo.EncryptedDataLen);
+        // UserId 비교
+        if (memcmp(tmpUserInfo.UserId, sUserInfo.UserId, sizeof(tmpUserInfo.UserId)) == 0) {
+            printf("User found\n");
+            user_found = true;
+            break;
+        } else {
+            // 일치하지 않으면 다음 데이터를 건너뜀
+            in_file.ignore(sizeof(sUserInfo.Iv));
+            unsigned int encrypted_data_len = 0;
+            in_file.read(reinterpret_cast<char*>(&encrypted_data_len), sizeof(sUserInfo.EncryptedDataLen));
+            in_file.ignore(encrypted_data_len);
+        }
+     }
+
+    in_file.close();
+    std::fstream out_file(USER_FILE, std::ios::binary | std::ios::in | std::ios::out);
+
+    if (user_found) {
+        out_file.seekp(current_pos);
+    } else {
+         out_file.seekp(0, std::ios::end);
+    }
+
+    out_file.write(reinterpret_cast<const char*>(&sUserInfo), sizeof(sUserInfo) - sizeof(sUserInfo.EncryptedData));
+    out_file.write(sUserInfo.EncryptedData, sUserInfo.EncryptedDataLen);
+
+    out_file.close();
 
     delete[] sUserInfo.EncryptedData;
-    return file.good();
+    return out_file.good();
 }
 
 bool load_user(const std::string& user_id, UserHandle& user_handle) {
     std::ifstream file(USER_FILE, std::ios::binary);
+    printf("load user info start");
     if (!file.is_open()) {
         std::cerr << "Not open user info" << std::endl;
         return false;
@@ -201,7 +238,7 @@ int check_userid(const std::string& user_id) {
 bool load_fail_info(const std::string& user_id_str, FailHandle& fail_handle) {
     std::ifstream file(AUTH_FAIL_FILE, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "파일을 열 수 없습니다." << std::endl;
+        std::cerr << "Do not exist fail info" << std::endl;
         return false;
     }
 
@@ -235,7 +272,7 @@ bool load_fail_info(const std::string& user_id_str, FailHandle& fail_handle) {
             int decrypted_len = 0;
 
             if (!aes_decrypt(KEY, sFailInfo.Iv, reinterpret_cast<unsigned char*>(sFailInfo.EncryptedData), sFailInfo.EncryptedDataLen, decrypted_buffer.data(), decrypted_len)) {
-                std::cerr << "복호화에 실패했습니다." << std::endl;
+                std::cerr << "decryption failed" << std::endl;
                 delete[] sFailInfo.EncryptedData;
                 return false;
             }
@@ -294,7 +331,7 @@ bool save_fail_info(FailHandle& fail_handle) {
     std::vector<unsigned char> encrypted_buffer(buffer.size() + AES_BLOCK_SIZE);
     int encrypted_len = 0;
     if (!aes_encrypt(KEY, iv.data(), buffer.data(), buffer.size(), encrypted_buffer.data(), encrypted_len)) {
-        std::cerr << "aes_ encrypt fail " << std::endl;
+        std::cerr << "encrypt fail " << std::endl;
         return false;
     }
 
@@ -408,10 +445,31 @@ bool delete_fail_info(const std::string& user_id_str) {
     return out_file.good();
 }
 
-int token_verifier(const std::vector<unsigned char>& token) {
+int ResetToken(const std::vector<unsigned char>& token) {
+    if (TokenVerifier(token)) {
+        printf("ResetToken Invaild token\n");
+        return INVALID_TOKEN;
+    }
+    memset(&global_token_info, 0,  sizeof(TokenInfo));
+    return SUCCESS;
+}
+
+int GlobalResetToken() {
+    memset(&global_token_info, 0,  sizeof(TokenInfo));
+    return SUCCESS;
+}
+
+
+int TokenVerifier(const std::vector<unsigned char>& token) {
 // 1. token이 유효한지 검증
+    TokenInfo nullToken = {0,};
+    if (0 == memcmp(&nullToken, &global_token_info, sizeof(TokenInfo))) {
+        std::cerr << "There is not an issued token" << std::endl;
+        return INVALID_TOKEN;
+    }
     std::vector<unsigned char> token_hmac_input(sizeof(TokenInfo));
     memcpy(token_hmac_input.data(), &global_token_info, sizeof(TokenInfo));
+
     std::vector<unsigned char> expected_token = calculate_hmac(HMAC_KEY, token_hmac_input.data(), token_hmac_input.size());
 
     if (token != expected_token) {
@@ -496,6 +554,7 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
         // 파일이 없으면 fail_info를 초기화한다.
         memset(&fail_info, 0, sizeof(FailInfo));
         memcpy(fail_info.UserId, user_id_str.c_str(), sizeof(fail_info.UserId));
+        memcpy(fail_info.Privilege, user_handle.User.Privilege, sizeof(fail_info.Privilege));
     } else {
         // 1.3. 복호화된 FailInfo의 Signature를 HMAC으로 검증한다.
         std::cerr << "Found user_fail_handle" << std::endl;
@@ -534,8 +593,9 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
         std::cerr << "Password verification failed" << std::endl;
         // 4.1. FailCount를 증가 시킨다. 만약 FailCount가 3이라면 Throttling에 1시간을 걸어 준다.
         fail_info.FailCount++;
+        std::cerr << " fail_info.FailCount :: " << fail_info.FailCount << std::endl;
         if (fail_info.FailCount >= 3) {
-            fail_info.Throttle = current_time + 3600; // 1시간 Throttling
+            fail_info.Throttle = current_time + 3600; // 3600 Throttling, 30 s == 30
         }
 
         memcpy(&user_fail_handler, &fail_info, sizeof(FailInfo));
@@ -579,7 +639,7 @@ int VerifyPwd(const char* username, const char* password, std::vector<unsigned c
         std::cerr << "Password expired" << std::endl;
         global_token_info.AuthType = 2;
         ret = EXPIRE_PASSWORD;  // return 패스워드 만료.
-
+        return ret;
     }
     // 6. TokenInfo의 HMAC 값 계산 = token
     std::vector<unsigned char> token_hmac_input(sizeof(TokenInfo));
@@ -595,7 +655,7 @@ int ChangePwd(const char* username, const char* password, const std::vector<unsi
     std::vector<unsigned char> user_id = sha256(username);
     std::string user_id_str(user_id.begin(), user_id.end());
     UserHandle user_handle;
-
+    printf("ChangePwd Enter");
     std::fstream file(USER_FILE, std::ios::binary | std::ios::in | std::ios::out);
     if (!file.is_open()) {
         std::cerr << "Failed to open user file" << std::endl;
@@ -621,13 +681,16 @@ int ChangePwd(const char* username, const char* password, const std::vector<unsi
         return INVALID_TOKEN;
     }
     // 토큰 type과 권한 체크.
-    if(global_token_info.AuthType != 2)
+    if(global_token_info.AuthType != 1 && global_token_info.AuthType != 2) {
     //ChangePw의 AuthType과 같아야만 한다.
+        std::cerr << "Auth Type Error :" <<  global_token_info.AuthType  << std::endl;
         return INVALID_TOKEN;
+    }
 
     if(global_token_info.Privilege != 1) {
         // 유저 체크, 유저가 token의 유저만 변경 가능.
         if (0 != memcmp(user_handle.User.UserId, global_token_info.UserId, sizeof(user_handle.User.UserId))) {
+            std::cerr << "No permission defference user id" << std::endl;
             return NO_PERMISSION;
         }
     }
@@ -650,11 +713,13 @@ int ChangePwd(const char* username, const char* password, const std::vector<unsi
         return INVALID_OPERATION;
     }
 
-    if(global_token_info.AuthType == 2) {
-        // 비밀번호 변경 완료 후 토큰 소멸, 유저 인증 재 필요.
+    if(!global_token_info.Privilege) {
+         std::cerr << "AuthType is changepw, token will destory" << std::endl;
+        // 유저는 본인의 비밀번호 변경 완료 후 토큰 소멸, 유저 인증 재 필요.
+        // 관리자는 유저의 비밀번호 변경, 관리자의 토큰은 유지.
         memset(&global_token_info, 0x0, sizeof(TokenInfo));
     }
-
+    printf("chagnepwd END\n");
     file.close();
     return SUCCESS;
 }

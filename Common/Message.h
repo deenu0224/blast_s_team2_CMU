@@ -19,6 +19,9 @@
 #define MT_LOGIN_VERITY_RES     13
 #define MT_LOGIN_CHANGEPW_RES   14
 #define MT_SHARED_HMAC_KEY      15
+#define MT_LOGOUT_REQ           16
+#define MT_LOGOUT_RES           17
+
 
 #define PAN_LEFT_START  0x01
 #define PAN_RIGHT_START 0x02
@@ -61,6 +64,8 @@ enum LogInState_t : unsigned int
     INVALID_MSG         = 0x7,
     AUTH_THROTTLED      = 0x8,
     NO_PERMISSION       = 0x9,
+	E_SUCCESS           = 0xA,
+    C_SUCCESS           = 0xB,
 };
 
 #define CLEAR_LASER_MASK    (~LASER_ON)
@@ -81,12 +86,14 @@ typedef struct
 {
     TMesssageHeader Hdr;
     unsigned char  Commands;
+    char   Token[32];
 } __attribute__((packed)) TMesssageCommands;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     char  FiringOrder[11];
+    char  Token[32];
 } __attribute__((packed)) TMesssageTargetOrder;
 
 typedef struct
@@ -105,6 +112,7 @@ typedef struct
 {
     TMesssageHeader Hdr;
     char   Code[10];
+    char   Token[32];
 } __attribute__((packed)) TMesssagePreArm;
 
 typedef struct
@@ -117,12 +125,14 @@ typedef struct
 {
     TMesssageHeader Hdr;
     SystemState_t   State;
+    char   Token[32];
 } __attribute__((packed)) TMesssageChangeStateRequest;
 
 typedef struct
 {
     TMesssageHeader Hdr;
     unsigned char  Commands;
+    char    Token[32];
 } __attribute__((packed)) TMesssageCalibCommands;
 
 typedef struct
@@ -150,6 +160,12 @@ typedef struct
 typedef struct
 {
     TMesssageHeader Hdr;
+    char    Token[32];
+} __attribute__((packed)) TMesssageLogoutRequest;
+
+typedef struct
+{
+    TMesssageHeader Hdr;
     unsigned int  LoginState;
 } __attribute__((packed)) TMesssageLoginEnrollResponse;
 
@@ -168,6 +184,12 @@ typedef struct
     TMesssageHeader Hdr;
     unsigned int  LoginState;
 } __attribute__((packed)) TMesssageLoginChangePwResponse;
+
+typedef struct
+{
+    TMesssageHeader Hdr;
+    unsigned int  LoginState;
+} __attribute__((packed)) TMesssageLogoutResponse;
 
 typedef struct
 {

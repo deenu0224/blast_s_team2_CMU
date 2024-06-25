@@ -60,7 +60,9 @@ typedef struct
 }  __attribute__((packed)) StoredFailInfo;
 
 void initialize_keys();
-int token_verifier(const std::vector<unsigned char>& token);
+int ResetToken(const std::vector<unsigned char>& token);
+int GlobalResetToken();
+int TokenVerifier(const std::vector<unsigned char>& token);
 int EnrollPwd(const char* username, const char* password);
 int VerifyPwd(const char* username, const char* password, std::vector<unsigned char>& token, FailInfo& fail_info);
 int ChangePwd(const char* username, const char* password, const std::vector<unsigned char>& token);
