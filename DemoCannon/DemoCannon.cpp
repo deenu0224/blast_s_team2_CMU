@@ -135,7 +135,7 @@ static void   ServoAngle(int Num,float &Angle) ;
 
 std::mutex log_mutex;
 
-static void AudidtLog(const char* message)
+static void AuditLog(const char* message)
 {
   std::lock_guard<std::mutex> lock(log_mutex);
   std::ofstream log_file("audit_log.txt", std::ios_base::app);
@@ -1140,7 +1140,7 @@ static void ProcessPreArm(char * Code)
           {
             SystemState=PREARMED;
             SendSystemState(SystemState);
-            AudidtLog("STATE_CHANGE_PRE_ARMED");
+            AuditLog("STATE_CHANGE_PRE_ARMED");
           } 
       }
   }
@@ -1166,7 +1166,7 @@ static void ProcessStateChangeRequest(SystemState_t state)
               AutoEngage.HaveFiringOrder=false;
               AutoEngage.NumberOfTartgets=0;
             }
-            AudidtLog("STATE_CHANGE_SAFE");
+            AuditLog("STATE_CHANGE_SAFE");
             break;
   case PREARMED:
             { 
@@ -1185,7 +1185,7 @@ static void ProcessStateChangeRequest(SystemState_t state)
                   SystemState=(SystemState_t)(state & CLEAR_LASER_FIRING_ARMED_CALIB_MASK);
                 }
              }
-             AudidtLog("STATE_CHANGE_PRE_ARMED");
+             AuditLog("STATE_CHANGE_PRE_ARMED");
              break;
 
   case ENGAGE_AUTO:
@@ -1207,7 +1207,7 @@ static void ProcessStateChangeRequest(SystemState_t state)
                 AutoEngage.State=ACTIVATE;
               }
             }
-            AudidtLog("STATE_CHANGE_ENGAGE_AUTO");
+            AuditLog("STATE_CHANGE_ENGAGE_AUTO");
             break;
   case ARMED_MANUAL:
             {
@@ -1234,7 +1234,7 @@ static void ProcessStateChangeRequest(SystemState_t state)
              {
               printf("UNKNOWN STATE REQUEST %d\n",state);
              }
-             AudidtLog("STATE_CHANGE_UNKNOWN_REQUEST");
+             AuditLog("STATE_CHANGE_UNKNOWN_REQUEST");
               break;
 
  }
@@ -1331,60 +1331,60 @@ static void ProcessCommands(unsigned char cmd)
               RunCmds&=PAN_RIGHT_STOP;
               Pan+=INC;
               ServoAngle(PAN_SERVO, Pan);
-              AudidtLog("MANUAL_ARMED_PAN_LEFT_START");
+              AuditLog("MANUAL_ARMED_PAN_LEFT_START");
               break;
          case PAN_RIGHT_START:
               RunCmds|=PAN_RIGHT_START;
               RunCmds&=PAN_LEFT_STOP;
               Pan-=INC;
               ServoAngle(PAN_SERVO, Pan);
-              AudidtLog("MANUAL_ARMED_PAN_RIGHT_START");
+              AuditLog("MANUAL_ARMED_PAN_RIGHT_START");
               break;
          case PAN_UP_START:
               RunCmds|=PAN_UP_START;
               RunCmds&=PAN_DOWN_STOP;
               Tilt+=INC; 
               ServoAngle(TILT_SERVO, Tilt);
-              AudidtLog("MANUAL_ARMED_PAN_UP_START");
+              AuditLog("MANUAL_ARMED_PAN_UP_START");
               break;
          case PAN_DOWN_START:
               RunCmds|=PAN_DOWN_START;
               RunCmds&=PAN_UP_STOP;
               Tilt-=INC; 
               ServoAngle(TILT_SERVO, Tilt);
-              AudidtLog("MANUAL_ARMED_PAN_DOWN_START");
+              AuditLog("MANUAL_ARMED_PAN_DOWN_START");
               break;
          case FIRE_START:
               RunCmds|=FIRE_START;
               fire(true);
               SendSystemState(SystemState);
-              AudidtLog("MANUAL_ARMED_FIRE_START");
+              AuditLog("MANUAL_ARMED_FIRE_START");
               break;   
          case PAN_LEFT_STOP:
               RunCmds&=PAN_LEFT_STOP;
-              AudidtLog("MANUAL_ARMED_PAN_LEFT_STOP");
+              AuditLog("MANUAL_ARMED_PAN_LEFT_STOP");
               break;
          case PAN_RIGHT_STOP:
               RunCmds&=PAN_RIGHT_STOP;
-              AudidtLog("MANUAL_ARMED_PAN_RIGHT_STOP");
+              AuditLog("MANUAL_ARMED_PAN_RIGHT_STOP");
               break;
          case PAN_UP_STOP:
               RunCmds&=PAN_UP_STOP;
-              AudidtLog("MANUAL_ARMED_PAN_UP_STOP");
+              AuditLog("MANUAL_ARMED_PAN_UP_STOP");
               break;
          case PAN_DOWN_STOP:
               RunCmds&=PAN_DOWN_STOP;
-              AudidtLog("MANUAL_ARMED_PAN_DOWN_STOP");
+              AuditLog("MANUAL_ARMED_PAN_DOWN_STOP");
               break;
          case FIRE_STOP: 
               RunCmds&=FIRE_STOP;
               fire(false);
               SendSystemState(SystemState);
-              AudidtLog("MANUAL_ARMED_FIRE_STOP");
+              AuditLog("MANUAL_ARMED_FIRE_STOP");
               break;
          default:
               printf("invalid command %x\n",cmd);
-              AudidtLog("MANUAL_ARMED_INVALID_COMMAND");
+              AuditLog("MANUAL_ARMED_INVALID_COMMAND");
               break;
       }
 
@@ -1409,19 +1409,19 @@ static void ProcessCalibCommands(unsigned char cmd)
         {
          case DEC_X:
               xCorrect++;
-              AudidtLog("CALIB_COMMAND_DEC_X");
+              AuditLog("CALIB_COMMAND_DEC_X");
               break;
          case INC_X:
               xCorrect--;
-              AudidtLog("CALIB_COMMAND_INC_X");
+              AuditLog("CALIB_COMMAND_INC_X");
               break;
          case DEC_Y:
               yCorrect--;
-              AudidtLog("CALIB_COMMAND_DEC_Y");
+              AuditLog("CALIB_COMMAND_DEC_Y");
               break;
          case INC_Y:
               yCorrect++;
-              AudidtLog("CALIB_COMMAND_INC_Y");
+              AuditLog("CALIB_COMMAND_INC_Y");
               break;
 
          default:
@@ -1617,7 +1617,7 @@ static void *NetworkInputThread(void *data)
       case MT_LOGIN_ENROLL_REQ:
       {
        printf("MT_LOGIN_ENROLL_REQ\n");
-       AudidtLog("MT_LOGIN_ENROLL_REQ");
+       AuditLog("MT_LOGIN_ENROLL_REQ");
        TMesssageLoginEnrollRequest* msgLoginEnroll = (TMesssageLoginEnrollRequest*)Buffer;
 
        // 1. MsgHdr->HMAC 값과 msgLoginEnroll의 HMAC값이 같은지 확인
@@ -1645,7 +1645,7 @@ static void *NetworkInputThread(void *data)
       case MT_LOGIN_VERITY_REQ:
       {
        printf("MT_LOGIN_VERITY_REQ\n");
-       AudidtLog("MT_LOGIN_VERITY_REQ");
+       AuditLog("MT_LOGIN_VERITY_REQ");
        TMesssageLoginVerifyRequest* msgLoginVerify = (TMesssageLoginVerifyRequest*)Buffer;
        FailInfo fail_info = {0,};
 
@@ -1671,7 +1671,7 @@ static void *NetworkInputThread(void *data)
       break;
       case MT_LOGIN_CHANGEPW_REQ:
       {
-       AudidtLog("MT_LOGIN_CHANGEPW_REQ");
+       AuditLog("MT_LOGIN_CHANGEPW_REQ");
        TMesssageLoginChangePwRequest* msgLoginChangePw = (TMesssageLoginChangePwRequest*)Buffer;
 
       // 1. MsgHdr->HMAC 값과 msgLoginChangePw의 HMAC값이 같은지 확인
